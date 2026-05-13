@@ -22,6 +22,7 @@ export default function ComparePage() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [validationError, setValidationError] = useState("");
 
   const propertyCount = properties.length;
 
@@ -71,9 +72,24 @@ export default function ComparePage() {
 
   async function handleCompare(event) {
     event.preventDefault();
+    setValidationError("");
     setLoading(true);
     setError("");
     setResults([]);
+
+    const hasInvalid = properties.some(
+      (item) =>
+        !item.postcode.trim()
+        || item.bedrooms < 1
+        || item.bedrooms > 10
+        || item.purchase_price <= 0
+        || item.monthly_rent <= 0
+    );
+    if (hasInvalid) {
+      setLoading(false);
+      setValidationError("Please check all properties. Use valid postcode and positive numeric values.");
+      return;
+    }
 
     try {
       const responses = await Promise.all(
@@ -99,7 +115,7 @@ export default function ComparePage() {
         .map((item, idx) => ({ ...item, rank: idx + 1 }));
       setResults(ranked);
     } catch (err) {
-      setError(err.message || "Could not compare properties.");
+      setError("Comparison failed. Please review inputs and try again.");
     } finally {
       setLoading(false);
     }
@@ -108,8 +124,8 @@ export default function ComparePage() {
   return (
     <>
       <section className="card">
-        <h2>Compare Properties</h2>
-        <p className="muted">
+        <h2 className="section-title">Compare Properties</h2>
+        <p className="section-subtitle">
           Compare 2 or 3 property scenarios and rank them by investment score.
         </p>
 
@@ -201,7 +217,9 @@ export default function ComparePage() {
           </div>
         </form>
 
+        {validationError && <p className="field-error">{validationError}</p>}
         {error && <div className="alert">{error}</div>}
+        {loading && <div className="loading-state">Running predictions for selected properties...</div>}
       </section>
 
       {comparisonSummary && (
@@ -223,7 +241,55 @@ export default function ComparePage() {
 
       {results.length > 0 && (
         <section className="card">
-          <h3>Ranked Results</h3>
+          <h3 className="section-title">Ranked Results</h3>
+          <p className="section-subtitle">
+            Rankings are based on the current prototype investment score.
+          </p>
+
+          <div className="chart-duo">
+            <article className="chart-card">
+              <h4>Investment Score Comparison</h4>
+              <div className="bar-chart-list">
+                {results.map((item) => (
+                  <div className="bar-chart-row" key={`score-${item.rank}-${item.postcode}`}>
+                    <div className="bar-chart-label">
+                      <span>#{item.rank}</span>
+                      <small>{item.postcode}</small>
+                    </div>
+                    <div className="bar-chart-track">
+                      <div
+                        className="bar-chart-fill"
+                        style={{ width: `${Math.max(0, Math.min(100, item.investment_score))}%` }}
+                      />
+                    </div>
+                    <strong>{item.investment_score.toFixed(1)}</strong>
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <article className="chart-card">
+              <h4>Predicted Yield Comparison</h4>
+              <div className="bar-chart-list">
+                {results.map((item) => (
+                  <div className="bar-chart-row" key={`yield-${item.rank}-${item.postcode}`}>
+                    <div className="bar-chart-label">
+                      <span>#{item.rank}</span>
+                      <small>{item.postcode}</small>
+                    </div>
+                    <div className="bar-chart-track">
+                      <div
+                        className="bar-chart-fill bar-chart-fill-yield"
+                        style={{ width: `${Math.max(0, Math.min(100, (item.predicted_yield / 10) * 100))}%` }}
+                      />
+                    </div>
+                    <strong>{item.predicted_yield.toFixed(2)}%</strong>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </div>
+
           <div className="ranked-grid">
             {results.map((item) => (
               <article
@@ -267,6 +333,30 @@ export default function ComparePage() {
                   </span>
                 </div>
 
+                <div className="compare-bars">
+                  <div className="compare-bar-row">
+                    <span>Score</span>
+                    <span>{item.investment_score}</span>
+                  </div>
+                  <div className="progress-track">
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${Math.max(0, Math.min(100, item.investment_score))}%` }}
+                    />
+                  </div>
+
+                  <div className="compare-bar-row">
+                    <span>Yield</span>
+                    <span>{item.predicted_yield}%</span>
+                  </div>
+                  <div className="progress-track">
+                    <div
+                      className="progress-fill progress-fill-yield"
+                      style={{ width: `${Math.max(0, Math.min(100, (item.predicted_yield / 10) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+
                 <div className="compare-details">
                   <p>
                     <strong>Purchase Price:</strong> GBP {item.purchase_price}
@@ -293,6 +383,10 @@ export default function ComparePage() {
               </article>
             ))}
           </div>
+          <p className="helper-note">
+            This comparison is decision-support only. Enriched neighbourhood values may use fallback
+            estimates when live APIs are not available.
+          </p>
         </section>
       )}
     </>

@@ -19,6 +19,7 @@ export default function AnalysePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
+  const [validationError, setValidationError] = useState("");
 
   function updateField(name, value) {
     const numericFields = [
@@ -34,10 +35,27 @@ export default function AnalysePage() {
 
   async function handlePredict(event) {
     event.preventDefault();
+    setValidationError("");
     setLoading(true);
     setError("");
     setSaveMessage("");
     setPrediction(null);
+
+    if (!formData.postcode.trim()) {
+      setLoading(false);
+      setValidationError("Please enter a valid UK postcode.");
+      return;
+    }
+    if (formData.bedrooms < 1 || formData.bedrooms > 10) {
+      setLoading(false);
+      setValidationError("Bedrooms must be between 1 and 10.");
+      return;
+    }
+    if (formData.purchase_price <= 0 || formData.monthly_rent <= 0) {
+      setLoading(false);
+      setValidationError("Price and rent must be positive values.");
+      return;
+    }
 
     try {
       const response = await fetch(`${BACKEND_URL}/predict`, {
@@ -51,7 +69,7 @@ export default function AnalysePage() {
       const result = await response.json();
       setPrediction(result);
     } catch (err) {
-      setError(err.message || "Could not fetch prediction.");
+      setError("Prediction failed. Please check your values and try again.");
     } finally {
       setLoading(false);
     }
@@ -74,7 +92,7 @@ export default function AnalysePage() {
       const saved = await response.json();
       setSaveMessage(`Saved analysis #${saved.id} successfully.`);
     } catch (err) {
-      setError(err.message || "Could not save analysis.");
+      setError("Could not save analysis. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -84,8 +102,8 @@ export default function AnalysePage() {
     <>
       <div className="dashboard-grid">
         <section className="card">
-          <h2>Analyse Property</h2>
-          <p className="muted">
+          <h2 className="section-title">Analyse Property</h2>
+          <p className="section-subtitle">
             Enter core property and neighbourhood indicators to generate an investment signal.
           </p>
           <form onSubmit={handlePredict}>
@@ -166,15 +184,18 @@ export default function AnalysePage() {
               )}
             </div>
           </form>
+          {validationError && <p className="field-error">{validationError}</p>}
           {error && <div className="alert">{error}</div>}
           {saveMessage && <div className="success-note">{saveMessage}</div>}
         </section>
 
         <section className="card">
-          <h3>Prediction Dashboard</h3>
-          <p className="muted">
+          <h3 className="section-title">Prediction Dashboard</h3>
+          <p className="section-subtitle">
             Outputs appear here after running the model prediction.
           </p>
+
+          {loading && <div className="loading-state">Running prediction and enrichment...</div>}
 
           {!prediction && (
             <div className="empty-state">
@@ -184,20 +205,41 @@ export default function AnalysePage() {
 
           {prediction && (
             <>
-              <div className="result-metrics">
-                <article className="metric-card">
+              <section className="summary-banner">
+                <div>
+                  <h4>Investment Summary</h4>
+                  <p className="summary-banner-value">{prediction.recommendation}</p>
+                  <small>{prediction.postcode} - {prediction.region}</small>
+                </div>
+                <div className="summary-badge-wrap">
+                  <span
+                    className={`badge ${
+                      prediction.recommendation === "Strong Buy"
+                        ? "badge-strong"
+                        : prediction.recommendation === "Moderate"
+                          ? "badge-moderate"
+                          : "badge-weak"
+                    }`}
+                  >
+                    Decision Signal
+                  </span>
+                </div>
+              </section>
+
+              <div className="result-metrics result-metrics-strong">
+                <article className="metric-card metric-card-strong">
                   <h4>Predicted Yield</h4>
                   <p className="metric-value">{prediction.predicted_yield}%</p>
                 </article>
 
-                <article className="metric-card">
+                <article className="metric-card metric-card-strong">
                   <h4>Investment Score</h4>
                   <p className="metric-value">{prediction.investment_score}</p>
                 </article>
 
                 <article className="metric-card">
                   <h4>Mapped Region</h4>
-                  <p className="metric-value" style={{ fontSize: "1.1rem" }}>
+                  <p className="metric-value" style={{ fontSize: "1.08rem" }}>
                     {prediction.region}
                   </p>
                 </article>
@@ -225,6 +267,44 @@ export default function AnalysePage() {
                     style={{ width: `${Math.max(0, Math.min(100, prediction.investment_score))}%` }}
                   />
                 </div>
+              </div>
+
+              <div className="mini-visual-grid">
+                <article className="mini-visual-card">
+                  <h4>Score Gauge</h4>
+                  <div
+                    className="score-gauge"
+                    style={{
+                      background: `conic-gradient(#19906d ${Math.max(0, Math.min(100, prediction.investment_score))}%, #dfe7f3 0)`,
+                    }}
+                  >
+                    <div className="score-gauge-inner">
+                      <strong>{Math.round(prediction.investment_score)}</strong>
+                      <small>/100</small>
+                    </div>
+                  </div>
+                </article>
+
+                <article className="mini-visual-card">
+                  <h4>Yield Position</h4>
+                  <div className="compare-bar-row">
+                    <span>Model Yield</span>
+                    <span>{prediction.predicted_yield}%</span>
+                  </div>
+                  <div className="progress-track">
+                    <div
+                      className="progress-fill progress-fill-yield"
+                      style={{ width: `${Math.max(0, Math.min(100, (prediction.predicted_yield / 10) * 100))}%` }}
+                    />
+                  </div>
+                  <div className="compare-bar-row" style={{ marginTop: 8 }}>
+                    <span>Benchmark</span>
+                    <span>5.0%</span>
+                  </div>
+                  <div className="progress-track">
+                    <div className="progress-fill" style={{ width: "50%" }} />
+                  </div>
+                </article>
               </div>
 
               <div className="yield-comparison">
@@ -271,6 +351,10 @@ export default function AnalysePage() {
                   </p>
                 </div>
               </div>
+              <p className="helper-note">
+                Recommendations are prototype decision-support outputs. Some neighbourhood values
+                may use fallback estimates when external APIs are unavailable.
+              </p>
             </>
           )}
         </section>
