@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import time
 from urllib.parse import quote
 
 import requests
@@ -16,6 +17,7 @@ from urllib3.exceptions import InsecureRequestWarning
 POSTCODES_IO_URL = "https://api.postcodes.io/postcodes/{postcode}"
 POLICE_UK_URL = "https://data.police.uk/api/crimes-street/all-crime?lat={lat}&lng={lng}"
 HTTP_TIMEOUT_SECONDS = 4
+CACHE_TTL_SECONDS = 600
 
 # These regions match model training categories.
 MODEL_REGIONS = {
@@ -67,9 +69,36 @@ LOW_SEVERITY_CATEGORIES = {
     "other-theft",
 }
 
+POSTCODE_CACHE: dict[str, tuple[float, dict]] = {}
+CRIME_CACHE: dict[str, tuple[float, dict]] = {}
+
 
 def _clip(value: float, min_value: float, max_value: float) -> float:
     return max(min_value, min(max_value, value))
+
+
+def _cache_get(cache: dict, key: str):
+    entry = cache.get(key)
+    if not entry:
+        return None
+    expires_at, value = entry
+    if time.time() > expires_at:
+        cache.pop(key, None)
+        return None
+    return value
+
+
+def _cache_set(cache: dict, key: str, value: dict) -> None:
+    cache[key] = (time.time() + CACHE_TTL_SECONDS, value)
+
+
+def _crime_cache_key(latitude: float, longitude: float) -> str:
+    return f"{round(latitude, 3):.3f},{round(longitude, 3):.3f}"
+
+
+def _clear_enrichment_caches_for_tests() -> None:
+    POSTCODE_CACHE.clear()
+    CRIME_CACHE.clear()
 
 
 def normalise_postcode(postcode: str) -> str:
@@ -107,6 +136,11 @@ def lookup_postcode(postcode: str) -> dict | None:
     """Return postcode metadata from Postcodes.io, or None on failure."""
     normalised = normalise_postcode(postcode)
     cleaned = re.sub(r"\s+", "", normalised)
+    cached = _cache_get(POSTCODE_CACHE, normalised)
+    if cached is not None:
+        print(f"[enrichment] Postcodes.io cache hit: {normalised}")
+        return cached
+
     url = POSTCODES_IO_URL.format(postcode=quote(cleaned))
     print(f"[enrichment] Looking up postcode: '{postcode}' -> '{normalised}'")
     print(f"[enrichment] Postcodes.io URL: {url}")
@@ -125,6 +159,7 @@ def lookup_postcode(postcode: str) -> dict | None:
         lng = result.get("longitude")
         has_lat_lng = lat is not None and lng is not None
         print(f"[enrichment] Postcodes.io returned lat/lng: {has_lat_lng} (lat={lat}, lng={lng})")
+        _cache_set(POSTCODE_CACHE, normalised, result)
         return result
     except RequestException as exc:
         print(f"[enrichment] Postcodes.io request error: {exc}")
@@ -139,6 +174,12 @@ def lookup_postcode(postcode: str) -> dict | None:
 
 def fetch_crime_data(latitude: float, longitude: float) -> dict | None:
     """Fetch crimes and convert category mix to a bounded score."""
+    cache_key = _crime_cache_key(latitude, longitude)
+    cached = _cache_get(CRIME_CACHE, cache_key)
+    if cached is not None:
+        print(f"[enrichment] Police.uk cache hit: {cache_key}")
+        return cached
+
     url = POLICE_UK_URL.format(lat=latitude, lng=longitude)
     print(f"[enrichment] Police.uk URL: {url}")
 
@@ -180,7 +221,9 @@ def fetch_crime_data(latitude: float, longitude: float) -> dict | None:
         crime_rate = _clip(25.0 + risk * 50.0, 20.0, 80.0)
 
         print(f"[enrichment] Police.uk weighted crime_rate: {crime_rate:.2f}")
-        return {"crime_rate": round(crime_rate, 2), "crime_count": crime_count}
+        result = {"crime_rate": round(crime_rate, 2), "crime_count": crime_count}
+        _cache_set(CRIME_CACHE, cache_key, result)
+        return result
     except RequestException as exc:
         print(f"[enrichment] Police.uk request error: {exc}")
         return None
