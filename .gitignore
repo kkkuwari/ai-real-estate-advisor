@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Environment and local settings
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
