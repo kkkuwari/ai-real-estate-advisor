@@ -1,0 +1,17 @@
+{
+  "selected_model": "random_forest",
+  "metrics": {
+    "linear_regression": {
+      "rmse": 0.0028288605089325704,
+      "mae": 0.0022118226736903388,
+      "r2": 0.8344297075479448
+    },
+    "random_forest": {
+      "rmse": 0.0027965258717318167,
+      "mae": 0.0021368235163567568,
+      "r2": 0.8381931016495227
+    }
+  },
+  "dataset_path": "/Users/mohammedalkuwari/Desktop/ai-real-estate-advisor/backend/data/uk_property_data.csv",
+  "model_path": "/Users/mohammedalkuwari/Desktop/ai-real-estate-advisor/backend/models/rental_yield_model.pkl"
+}

@@ -1,5 +1,2 @@
-"""Model loading and inference service logic.
-
-This module will handle reading trained models and generating investment predictions.
-"""
+"""Load the trained model and run predictions."""
 
