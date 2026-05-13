@@ -7,3 +7,4 @@ sqlalchemy
 pydantic
 joblib
 matplotlib
+requests

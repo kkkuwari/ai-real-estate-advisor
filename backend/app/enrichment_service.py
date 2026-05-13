@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 import re
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+
+import requests
+import urllib3
+from requests.exceptions import RequestException, SSLError
+from urllib3.exceptions import InsecureRequestWarning
 
 
 POSTCODES_IO_URL = "https://api.postcodes.io/postcodes/{postcode}"
@@ -52,39 +56,89 @@ def normalise_postcode(postcode: str) -> str:
     return f"{cleaned[:-3]} {cleaned[-3:]}"
 
 
-def _http_get_json(url: str):
-    request = Request(url, headers={"User-Agent": "ai-real-estate-advisor/1.0"})
-    with urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
-        payload = response.read().decode("utf-8")
-    return json.loads(payload)
+def _http_get_json(url: str) -> tuple[int, dict | list]:
+    headers = {"User-Agent": "ai-real-estate-advisor/1.0"}
+    try:
+        response = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT_SECONDS)
+        return response.status_code, response.json()
+    except SSLError as exc:
+        ssl_message = str(exc)
+        is_cert_verify_error = (
+            "CERTIFICATE_VERIFY_FAILED" in ssl_message
+            or "certificate verify failed" in ssl_message.lower()
+        )
+        if not is_cert_verify_error:
+            raise
+
+        # Local development fallback only:
+        # if a local Python environment lacks CA certs, retry this request with verify=False.
+        # This is intentionally scoped to SSL-cert failures on a single request.
+        print("[enrichment] SSL certificate verification failed. Retrying request with verify=False (dev fallback).")
+        urllib3.disable_warnings(InsecureRequestWarning)
+        response = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT_SECONDS, verify=False)
+        return response.status_code, response.json()
 
 
 def lookup_postcode(postcode: str) -> dict | None:
     """Return postcode metadata from Postcodes.io, or None on failure."""
+    normalised = normalise_postcode(postcode)
+    cleaned = re.sub(r"\s+", "", normalised)
+    url = POSTCODES_IO_URL.format(postcode=quote(cleaned))
+    print(f"[enrichment] Looking up postcode: '{postcode}' -> '{normalised}'")
+    print(f"[enrichment] Postcodes.io URL: {url}")
+
     try:
-        normalised = normalise_postcode(postcode)
-        url = POSTCODES_IO_URL.format(postcode=quote(normalised))
-        payload = _http_get_json(url)
-        if payload.get("status") != 200:
+        http_status, payload = _http_get_json(url)
+        api_status = payload.get("status") if isinstance(payload, dict) else None
+        print(f"[enrichment] Postcodes.io HTTP status: {http_status}, API status: {api_status}")
+
+        if not isinstance(payload, dict) or payload.get("status") != 200:
+            print("[enrichment] Postcodes.io lookup failed: non-success response payload.")
             return None
-        return payload.get("result")
-    except Exception:
+
+        result = payload.get("result") or {}
+        lat = result.get("latitude")
+        lng = result.get("longitude")
+        has_lat_lng = lat is not None and lng is not None
+        print(f"[enrichment] Postcodes.io returned lat/lng: {has_lat_lng} (lat={lat}, lng={lng})")
+        return result
+    except RequestException as exc:
+        print(f"[enrichment] Postcodes.io request error: {exc}")
+        return None
+    except json.JSONDecodeError as exc:
+        print(f"[enrichment] Postcodes.io JSON decode error: {exc}")
+        return None
+    except Exception as exc:
+        print(f"[enrichment] Postcodes.io unexpected error: {exc}")
         return None
 
 
-def fetch_crime_data(latitude: float, longitude: float) -> float | None:
+def fetch_crime_data(latitude: float, longitude: float) -> dict | None:
     """Fetch crime records and convert density to a 0-100 score."""
+    url = POLICE_UK_URL.format(lat=latitude, lng=longitude)
+    print(f"[enrichment] Police.uk URL: {url}")
+
     try:
-        url = POLICE_UK_URL.format(lat=latitude, lng=longitude)
-        payload = _http_get_json(url)
+        http_status, payload = _http_get_json(url)
+        print(f"[enrichment] Police.uk HTTP status: {http_status}")
         if not isinstance(payload, list):
+            print("[enrichment] Police.uk lookup failed: payload is not a list.")
             return None
 
         crime_count = len(payload)
+        print(f"[enrichment] Police.uk crimes returned: {crime_count}")
+
         # Simple bounded transformation for prototype scoring.
         crime_rate = _clip(crime_count * 1.8, 5.0, 100.0)
-        return round(crime_rate, 2)
-    except Exception:
+        return {"crime_rate": round(crime_rate, 2), "crime_count": crime_count}
+    except RequestException as exc:
+        print(f"[enrichment] Police.uk request error: {exc}")
+        return None
+    except json.JSONDecodeError as exc:
+        print(f"[enrichment] Police.uk JSON decode error: {exc}")
+        return None
+    except Exception as exc:
+        print(f"[enrichment] Police.uk unexpected error: {exc}")
         return None
 
 
@@ -140,10 +194,13 @@ def _map_to_model_region(postcode_lookup: dict | None, postcode: str) -> str:
 def estimate_neighbourhood_metrics(postcode: str) -> dict:
     """Estimate model-required neighbourhood features from postcode."""
     sources_used: list[str] = []
+    fallback_reasons: list[str] = []
 
     postcode_info = lookup_postcode(postcode)
     if postcode_info:
         sources_used.append("postcodes.io")
+    else:
+        fallback_reasons.append("Postcodes.io unavailable: using postcode-area mapping and local defaults.")
 
     region = _map_to_model_region(postcode_info, postcode)
     defaults = REGIONAL_DEFAULTS[region]
@@ -154,19 +211,39 @@ def estimate_neighbourhood_metrics(postcode: str) -> dict:
     if latitude is not None and longitude is not None:
         police_crime = fetch_crime_data(latitude, longitude)
         if police_crime is not None:
-            crime_rate = police_crime
+            crime_rate = police_crime["crime_rate"]
             sources_used.append("data.police.uk")
+        else:
+            fallback_reasons.append("Police.uk unavailable: crime_rate fell back to local regional default.")
+    else:
+        fallback_reasons.append("Postcodes.io did not return latitude/longitude: crime_rate used local default.")
 
     # Keep these as stable regional estimates for now.
     amenity_score = defaults["amenity_score"]
     hpi_growth = defaults["hpi_growth"]
     distance_to_station = defaults["distance_to_station"]
+    fallback_reasons.append(
+        "amenity_score/hpi_growth/distance_to_station currently use regional fallback estimates."
+    )
 
     # Light consistency adjustment if crime is significantly high/low.
     amenity_score = _clip(amenity_score - (crime_rate - defaults["crime_rate"]) * 0.12, 20.0, 95.0)
 
-    if not sources_used:
+    used_fallback = (
+        "data.police.uk" not in sources_used
+        or amenity_score == defaults["amenity_score"]
+        or hpi_growth == defaults["hpi_growth"]
+        or distance_to_station == defaults["distance_to_station"]
+        or "postcodes.io" not in sources_used
+    )
+    if used_fallback:
         sources_used.append("local_defaults")
+        print("[enrichment] Fallback used:")
+        for reason in fallback_reasons:
+            print(f"[enrichment] - {reason}")
+
+    # De-duplicate while preserving order.
+    sources_used = list(dict.fromkeys(sources_used))
 
     return {
         "region": region,
