@@ -102,6 +102,7 @@ export default function AnalysePage() {
     <>
       <div className="dashboard-grid">
         <section className="card">
+          <div className="no-print">
           <h2 className="section-title">Analyse Property</h2>
           <p className="section-subtitle">
             Enter core property and neighbourhood indicators to generate an investment signal.
@@ -187,6 +188,7 @@ export default function AnalysePage() {
           {validationError && <p className="field-error">{validationError}</p>}
           {error && <div className="alert">{error}</div>}
           {saveMessage && <div className="success-note">{saveMessage}</div>}
+          </div>
         </section>
 
         <section className="card">
@@ -205,6 +207,12 @@ export default function AnalysePage() {
 
           {prediction && (
             <>
+              <div className="action-row no-print" style={{ marginTop: 0 }}>
+                <button className="button-secondary" type="button" onClick={() => window.print()}>
+                  Print Analysis
+                </button>
+              </div>
+
               <section className="summary-banner">
                 <div>
                   <h4>Investment Summary</h4>
@@ -359,6 +367,37 @@ export default function AnalysePage() {
           )}
         </section>
       </div>
+
+      {prediction && (
+        <section className="print-only print-report">
+          <h2>AI Real Estate Investment Advisor - Analysis Summary</h2>
+
+          <h3>Property Input</h3>
+          <p><strong>Postcode:</strong> {formData.postcode}</p>
+          <p><strong>Property Type:</strong> {formData.property_type}</p>
+          <p><strong>Bedrooms:</strong> {formData.bedrooms}</p>
+          <p><strong>Purchase Price:</strong> GBP {formData.purchase_price}</p>
+          <p><strong>Monthly Rent:</strong> GBP {formData.monthly_rent}</p>
+
+          <h3>Prediction Output</h3>
+          <p><strong>Predicted Yield:</strong> {prediction.predicted_yield}%</p>
+          <p><strong>Investment Score:</strong> {prediction.investment_score}</p>
+          <p><strong>Recommendation:</strong> {prediction.recommendation}</p>
+          <p><strong>Mapped Region:</strong> {prediction.region}</p>
+
+          <h3>Neighbourhood Metrics</h3>
+          <p><strong>Crime Rate:</strong> {prediction.crime_rate}</p>
+          <p><strong>Amenity Score:</strong> {prediction.amenity_score}</p>
+          <p><strong>HPI Growth:</strong> {prediction.hpi_growth}%</p>
+          <p><strong>Distance to Station:</strong> {prediction.distance_to_station} km</p>
+          <p><strong>Data Sources:</strong> {(prediction.data_sources_used || []).join(", ")}</p>
+
+          <p className="print-disclaimer">
+            Disclaimer: this is a prototype decision-support output for academic use and not
+            financial advice.
+          </p>
+        </section>
+      )}
     </>
   );
 }

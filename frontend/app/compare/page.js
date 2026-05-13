@@ -124,6 +124,7 @@ export default function ComparePage() {
   return (
     <>
       <section className="card">
+        <div className="no-print">
         <h2 className="section-title">Compare Properties</h2>
         <p className="section-subtitle">
           Compare 2 or 3 property scenarios and rank them by investment score.
@@ -220,6 +221,7 @@ export default function ComparePage() {
         {validationError && <p className="field-error">{validationError}</p>}
         {error && <div className="alert">{error}</div>}
         {loading && <div className="loading-state">Running predictions for selected properties...</div>}
+        </div>
       </section>
 
       {comparisonSummary && (
@@ -241,6 +243,13 @@ export default function ComparePage() {
 
       {results.length > 0 && (
         <section className="card">
+          <div className="action-row no-print" style={{ marginTop: 0 }}>
+            <button className="button-secondary" type="button" onClick={() => window.print()}>
+              Print Comparison
+            </button>
+          </div>
+
+          <div className="no-print">
           <h3 className="section-title">Ranked Results</h3>
           <p className="section-subtitle">
             Rankings are based on the current prototype investment score.
@@ -386,6 +395,39 @@ export default function ComparePage() {
           <p className="helper-note">
             This comparison is decision-support only. Enriched neighbourhood values may use fallback
             estimates when live APIs are not available.
+          </p>
+          </div>
+        </section>
+      )}
+
+      {results.length > 0 && (
+        <section className="print-only print-report">
+          <h2>AI Real Estate Investment Advisor - Comparison Summary</h2>
+          <p><strong>Compared Properties:</strong> {results.length}</p>
+          <p><strong>Average Score:</strong> {comparisonSummary?.avgScore}</p>
+
+          {results.map((item) => (
+            <div className="print-block" key={`print-${item.rank}-${item.postcode}`}>
+              <h3>Rank #{item.rank} - {item.postcode}</h3>
+              <p><strong>Region:</strong> {item.region}</p>
+              <p><strong>Type:</strong> {item.property_type}</p>
+              <p><strong>Bedrooms:</strong> {item.bedrooms}</p>
+              <p><strong>Purchase Price:</strong> GBP {item.purchase_price}</p>
+              <p><strong>Monthly Rent:</strong> GBP {item.monthly_rent}</p>
+              <p><strong>Predicted Yield:</strong> {item.predicted_yield}%</p>
+              <p><strong>Investment Score:</strong> {item.investment_score}</p>
+              <p><strong>Recommendation:</strong> {item.recommendation}</p>
+              <p><strong>Crime Rate:</strong> {item.crime_rate}</p>
+              <p><strong>Amenity Score:</strong> {item.amenity_score}</p>
+              <p><strong>HPI Growth:</strong> {item.hpi_growth}%</p>
+              <p><strong>Distance to Station:</strong> {item.distance_to_station} km</p>
+              <p><strong>Data Sources:</strong> {(item.data_sources_used || []).join(", ")}</p>
+            </div>
+          ))}
+
+          <p className="print-disclaimer">
+            Disclaimer: this is a prototype decision-support output for academic use and not
+            financial advice.
           </p>
         </section>
       )}

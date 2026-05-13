@@ -915,6 +915,38 @@ tbody tr:hover {
   line-height: 1.4;
 }
 
+.print-only {
+  display: none;
+}
+
+.print-report h2 {
+  margin: 0 0 12px;
+  font-size: 1.25rem;
+}
+
+.print-report h3 {
+  margin: 12px 0 6px;
+  font-size: 1rem;
+}
+
+.print-report p {
+  margin: 3px 0;
+  font-size: 0.9rem;
+}
+
+.print-block {
+  border-top: 1px solid #d9dfe8;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.print-disclaimer {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #d9dfe8;
+  color: #4f5f78;
+}
+
 @media (max-width: 960px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
@@ -937,5 +969,36 @@ tbody tr:hover {
 
   .hero h2 {
     font-size: 1.55rem;
+  }
+}
+
+@media print {
+  body {
+    background: #ffffff;
+    color: #111827;
+  }
+
+  .site-header,
+  .no-print {
+    display: none !important;
+  }
+
+  .container {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .print-only {
+    display: block;
+  }
+
+  .print-report {
+    background: #ffffff;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
   }
 }
