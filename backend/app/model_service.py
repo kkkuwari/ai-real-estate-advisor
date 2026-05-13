@@ -7,6 +7,7 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
+from .enrichment_service import estimate_neighbourhood_metrics, normalise_postcode
 from .schemas import PredictionRequest
 
 
@@ -40,27 +41,28 @@ def load_model():
     return _MODEL
 
 
-def predict_yield(payload: PredictionRequest) -> float:
+def predict_yield(payload: PredictionRequest) -> tuple[float, dict]:
     """Return predicted rental yield as a percentage."""
+    enriched = estimate_neighbourhood_metrics(payload.postcode)
     model = load_model()
     row = pd.DataFrame(
         [
             {
-                "region": payload.region,
+                "region": enriched["region"],
                 "property_type": payload.property_type,
                 "bedrooms": payload.bedrooms,
                 "purchase_price": payload.purchase_price,
                 "monthly_rent": payload.monthly_rent,
-                "crime_rate": payload.crime_rate,
-                "amenity_score": payload.amenity_score,
-                "hpi_growth": payload.hpi_growth,
-                "distance_to_station": payload.distance_to_station,
+                "crime_rate": enriched["crime_rate"],
+                "amenity_score": enriched["amenity_score"],
+                "hpi_growth": enriched["hpi_growth"],
+                "distance_to_station": enriched["distance_to_station"],
             }
         ]
     )[FEATURE_COLUMNS]
 
     predicted_decimal = float(model.predict(row)[0])
-    return round(predicted_decimal * 100.0, 2)
+    return round(predicted_decimal * 100.0, 2), enriched
 
 
 def calculate_investment_score(
@@ -83,19 +85,26 @@ def generate_recommendation(predicted_yield: float) -> str:
     return "Weak"
 
 
-def analyze_property(payload: PredictionRequest) -> dict[str, float | str]:
+def analyze_property(payload: PredictionRequest) -> dict:
     """Run prediction and derive recommendation fields."""
-    predicted_yield = predict_yield(payload)
+    predicted_yield, enriched = predict_yield(payload)
     investment_score = calculate_investment_score(
         predicted_yield=predicted_yield,
-        amenity_score=payload.amenity_score,
-        crime_rate=payload.crime_rate,
-        hpi_growth=payload.hpi_growth,
+        amenity_score=float(enriched["amenity_score"]),
+        crime_rate=float(enriched["crime_rate"]),
+        hpi_growth=float(enriched["hpi_growth"]),
     )
     recommendation = generate_recommendation(predicted_yield)
     return {
+        "postcode": normalise_postcode(payload.postcode),
+        "region": enriched["region"],
         "predicted_yield": predicted_yield,
         "investment_score": investment_score,
         "recommendation": recommendation,
+        "crime_rate": enriched["crime_rate"],
+        "amenity_score": enriched["amenity_score"],
+        "hpi_growth": enriched["hpi_growth"],
+        "distance_to_station": enriched["distance_to_station"],
+        "data_sources_used": enriched["data_sources_used"],
     }
 

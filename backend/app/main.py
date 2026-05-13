@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import List
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -51,31 +52,71 @@ def save_analysis(payload: PredictionRequest, db: Session = Depends(get_db)) -> 
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     record = PropertyAnalysis(
-        region=payload.region,
+        postcode=result["postcode"],
+        region=result["region"],
         property_type=payload.property_type,
         bedrooms=payload.bedrooms,
         purchase_price=payload.purchase_price,
         monthly_rent=payload.monthly_rent,
-        crime_rate=payload.crime_rate,
-        amenity_score=payload.amenity_score,
-        hpi_growth=payload.hpi_growth,
-        distance_to_station=payload.distance_to_station,
+        crime_rate=result["crime_rate"],
+        amenity_score=result["amenity_score"],
+        hpi_growth=result["hpi_growth"],
+        distance_to_station=result["distance_to_station"],
         predicted_yield=result["predicted_yield"],
         investment_score=result["investment_score"],
         recommendation=result["recommendation"],
+        data_sources_used=json.dumps(result["data_sources_used"]),
     )
     db.add(record)
     db.commit()
     db.refresh(record)
-    return record
+    return SavedAnalysisResponse(
+        id=record.id,
+        postcode=record.postcode,
+        region=record.region,
+        property_type=record.property_type,
+        bedrooms=record.bedrooms,
+        purchase_price=record.purchase_price,
+        monthly_rent=record.monthly_rent,
+        crime_rate=record.crime_rate,
+        amenity_score=record.amenity_score,
+        hpi_growth=record.hpi_growth,
+        distance_to_station=record.distance_to_station,
+        predicted_yield=record.predicted_yield,
+        investment_score=record.investment_score,
+        recommendation=record.recommendation,
+        data_sources_used=json.loads(record.data_sources_used or "[]"),
+        created_at=record.created_at,
+    )
 
 
 @app.get("/analyses", response_model=List[SavedAnalysisResponse])
 def get_analyses(limit: int = 100, db: Session = Depends(get_db)) -> List[SavedAnalysisResponse]:
-    return (
+    records = (
         db.query(PropertyAnalysis)
         .order_by(PropertyAnalysis.created_at.desc())
         .limit(limit)
         .all()
     )
+    return [
+        SavedAnalysisResponse(
+            id=record.id,
+            postcode=record.postcode,
+            region=record.region,
+            property_type=record.property_type,
+            bedrooms=record.bedrooms,
+            purchase_price=record.purchase_price,
+            monthly_rent=record.monthly_rent,
+            crime_rate=record.crime_rate,
+            amenity_score=record.amenity_score,
+            hpi_growth=record.hpi_growth,
+            distance_to_station=record.distance_to_station,
+            predicted_yield=record.predicted_yield,
+            investment_score=record.investment_score,
+            recommendation=record.recommendation,
+            data_sources_used=json.loads(record.data_sources_used or "[]"),
+            created_at=record.created_at,
+        )
+        for record in records
+    ]
 
