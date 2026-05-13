@@ -12,8 +12,11 @@ export default function RootLayout({ children }) {
         <div className="container">
           <header className="site-header">
             <div className="brand">
-              <h1>AI Real Estate Investment Advisor</h1>
-              <p>Investment analytics dashboard for UK-inspired property scenarios</p>
+              <div className="brand-row">
+                <span className="brand-mark">AI</span>
+                <h1>AI Real Estate Investment Advisor</h1>
+              </div>
+              <p>Investment analytics dashboard</p>
             </div>
             <nav>
               <a href="/">Home</a>

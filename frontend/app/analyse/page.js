@@ -105,7 +105,7 @@ export default function AnalysePage() {
           <div className="no-print">
           <h2 className="section-title">Analyse Property</h2>
           <p className="section-subtitle">
-            Enter core property and neighbourhood indicators to generate an investment signal.
+            Enter core property details and use postcode enrichment to generate an investment signal.
           </p>
           <form onSubmit={handlePredict}>
             <div className="input-grid">
