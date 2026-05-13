@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from urllib.parse import quote
 
@@ -41,6 +42,29 @@ REGIONAL_DEFAULTS = {
     "Nottingham": {"crime_rate": 53.0, "amenity_score": 63.0, "hpi_growth": 3.7, "distance_to_station": 3.1},
     "Sheffield": {"crime_rate": 50.0, "amenity_score": 61.0, "hpi_growth": 3.8, "distance_to_station": 3.4},
     "Edinburgh": {"crime_rate": 43.0, "amenity_score": 76.0, "hpi_growth": 3.3, "distance_to_station": 2.2},
+}
+
+HIGH_SEVERITY_CATEGORIES = {
+    "violent-crime",
+    "robbery",
+    "possession-of-weapons",
+    "sexual-offences",
+}
+
+MEDIUM_SEVERITY_CATEGORIES = {
+    "burglary",
+    "vehicle-crime",
+    "criminal-damage-arson",
+    "drugs",
+    "public-order",
+}
+
+LOW_SEVERITY_CATEGORIES = {
+    "anti-social-behaviour",
+    "shoplifting",
+    "theft-from-the-person",
+    "bicycle-theft",
+    "other-theft",
 }
 
 
@@ -114,7 +138,7 @@ def lookup_postcode(postcode: str) -> dict | None:
 
 
 def fetch_crime_data(latitude: float, longitude: float) -> dict | None:
-    """Fetch crime records and convert density to a 0-100 score."""
+    """Fetch crimes and convert category mix to a bounded score."""
     url = POLICE_UK_URL.format(lat=latitude, lng=longitude)
     print(f"[enrichment] Police.uk URL: {url}")
 
@@ -125,11 +149,37 @@ def fetch_crime_data(latitude: float, longitude: float) -> dict | None:
             print("[enrichment] Police.uk lookup failed: payload is not a list.")
             return None
 
-        crime_count = len(payload)
-        print(f"[enrichment] Police.uk crimes returned: {crime_count}")
+        high_count = 0
+        medium_count = 0
+        low_count = 0
+        for crime in payload:
+            category = crime.get("category")
+            if category in HIGH_SEVERITY_CATEGORIES:
+                high_count += 1
+            elif category in MEDIUM_SEVERITY_CATEGORIES:
+                medium_count += 1
+            elif category in LOW_SEVERITY_CATEGORIES:
+                low_count += 1
 
-        # Simple bounded transformation for prototype scoring.
-        crime_rate = _clip(crime_count * 1.8, 5.0, 100.0)
+        crime_count = high_count + medium_count + low_count
+        if crime_count == 0:
+            print("[enrichment] Police.uk returned no recognised categories.")
+            return None
+
+        print(
+            "[enrichment] Police.uk counts "
+            f"(high={high_count}, medium={medium_count}, low={low_count}, total={crime_count})"
+        )
+
+        weighted_severity = (
+            3.0 * high_count + 2.0 * medium_count + 1.0 * low_count
+        ) / crime_count
+        normalized_severity = (weighted_severity - 1.0) / 2.0
+        volume_factor = _clip(math.log1p(crime_count) / math.log1p(120), 0.0, 1.0)
+        risk = 0.65 * normalized_severity + 0.35 * volume_factor
+        crime_rate = _clip(25.0 + risk * 50.0, 20.0, 80.0)
+
+        print(f"[enrichment] Police.uk weighted crime_rate: {crime_rate:.2f}")
         return {"crime_rate": round(crime_rate, 2), "crime_count": crime_count}
     except RequestException as exc:
         print(f"[enrichment] Police.uk request error: {exc}")
