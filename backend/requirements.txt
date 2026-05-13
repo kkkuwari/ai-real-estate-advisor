@@ -8,3 +8,4 @@ pydantic
 joblib
 matplotlib
 requests
+pytest
