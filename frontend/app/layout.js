@@ -18,6 +18,7 @@ export default function RootLayout({ children }) {
             <nav>
               <a href="/">Home</a>
               <a href="/analyse">Analyse Property</a>
+              <a href="/compare">Compare Properties</a>
               <a href="/analyses">Saved Analyses</a>
             </nav>
           </header>
